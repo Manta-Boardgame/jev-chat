@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jev Chat</title>
+<link rel="icon" href="icon.png">
+<style>
+  :root{
+    --bg:#f6f5f1; --panel:#ffffff; --ink:#1f1e1b; --muted:#6b6860; --line:#e3e0d8;
+    --accent:#c2552f; --accent-soft:#f6e3da; --user:#ece9e1; --bar:#d9d5cb;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#1c1b19; --panel:#262522; --ink:#ecebe6; --muted:#a19e95; --line:#3a3834;
+      --accent:#e07a52; --accent-soft:#3d2a22; --user:#302e2a; --bar:#45423c; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 system-ui,"Segoe UI","Yu Gothic UI","Hiragino Sans",sans-serif;
+    height:100vh;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{font-size:17px;margin:0;font-weight:700}
+  header h1 span{color:var(--accent)}
+  .usage{font-size:12.5px;color:var(--muted);text-align:right}
+  .usage .meter{height:5px;width:160px;background:var(--bar);border-radius:3px;margin-top:4px;overflow:hidden;margin-left:auto}
+  .usage .meter i{display:block;height:100%;background:var(--accent);width:0}
+  button.link{background:none;border:none;color:var(--muted);cursor:pointer;font:inherit;font-size:12.5px;text-decoration:underline}
+  main{flex:1;overflow-y:auto;padding:24px 16px}
+  .log{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+  .msg.user{align-self:flex-end;max-width:85%;background:var(--user);border-radius:14px 14px 4px 14px;padding:10px 14px}
+  .msg.user .state{white-space:pre-wrap}
+  .msg.user .q{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);font-weight:600;white-space:pre-wrap}
+  .msg.user .kind{font-size:12px;color:var(--muted);font-weight:400;margin-left:6px}
+  .msg.jev{align-self:flex-start;max-width:85%;display:flex;gap:10px}
+  .avatar{flex:none;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;
+    display:grid;place-items:center;font-weight:700;font-size:13px}
+  .bubble{background:var(--panel);border:1px solid var(--line);border-radius:4px 14px 14px 14px;padding:10px 14px;min-width:240px}
+  .headline{font-size:17px;font-weight:700}
+  .headline small{font-weight:400;color:var(--muted);font-size:13px}
+  .rows{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+  .row{display:grid;grid-template-columns:minmax(60px,auto) 1fr 44px;gap:8px;align-items:center;font-size:13px}
+  .row .track{height:8px;background:var(--bar);border-radius:4px;overflow:hidden}
+  .row .track i{display:block;height:100%;background:var(--muted)}
+  .row.top .track i{background:var(--accent)}
+  .row.top{font-weight:600}
+  .row .pct{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+  .meta{font-size:11.5px;color:var(--muted);margin-top:8px}
+  .error{color:#b3261e}
+  .thinking{color:var(--muted);font-style:italic}
+  footer{border-top:1px solid var(--line);background:var(--panel);padding:12px 16px}
+  .composer{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+  textarea,input[type=text]{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 12px;
+    background:var(--bg);color:var(--ink);font:inherit;resize:vertical}
+  textarea:focus,input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+  label.small{font-size:12px;color:var(--muted)}
+  .line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .seg button{border:none;background:transparent;color:var(--ink);padding:7px 12px;cursor:pointer;font:inherit;font-size:13.5px}
+  .seg button[aria-pressed=true]{background:var(--accent);color:#fff}
+  #options{flex:1;min-width:200px}
+  #send{margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:9px 20px;
+    font:inherit;font-weight:700;cursor:pointer}
+  #send:disabled{opacity:.5;cursor:default}
+  #setup{flex:1;overflow-y:auto;padding:24px 16px}
+  .setupBox{max-width:620px;margin:0 auto;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;padding:20px 22px}
+  .setupBox h2{font-size:17px;margin:0 0 8px}
+  .setupBox ol{padding-left:1.3em;margin:10px 0}
+  .setupBox li{margin:4px 0}
+  .setupBox a{color:var(--accent)}
+  .setupBox input{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 12px;
+    background:var(--bg);color:var(--ink);font:inherit;margin:8px 0}
+  #keySave{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:9px 20px;
+    font:inherit;font-weight:700;cursor:pointer}
+  .hint{font-size:12px;color:var(--muted)}
+  .filebtn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;
+    padding:7px 12px;cursor:pointer;font-size:13.5px;white-space:nowrap}
+  .filebtn:hover{border-color:var(--accent)}
+  .qlabel{font-weight:600;margin:10px 0 4px;font-size:14px}
+  .qlabel:first-child{margin-top:0}
+  .adiv{border:none;border-top:1px solid var(--line);margin:12px 0}
+  .fileinfo{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);min-width:0}
+  .fileinfo b{color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fileinfo button{border:none;background:none;color:var(--muted);cursor:pointer;font:inherit;padding:0 4px}
+  .filechip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);
+    border-radius:8px;padding:4px 8px;font-size:12.5px;margin-bottom:6px;max-width:100%}
+  .filechip b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  @media (max-width: 600px){
+    header{padding:10px 12px} header h1{font-size:16px}
+    .usage .meter{width:110px} .usage{font-size:11.5px}
+    main{padding:14px 10px} .msg.user,.msg.jev{max-width:95%}
+    footer{padding:10px 10px calc(10px + env(safe-area-inset-bottom))}
+    .seg button{padding:7px 9px;font-size:13px}
+    #send{margin-left:0;width:100%}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Jev</span> Chat
+    <button class="link" id="clear" title="Clear the conversation">Clear</button>
+    <button class="link" id="keyBtn" title="Set your API key">API key</button>
+  </h1>
+  <div class="usage">
+    <div id="usageText">Checking usage…</div>
+    <div class="meter"><i id="usageBar"></i></div>
+  </div>
+</header>
+
+<section id="setup" hidden>
+  <div class="setupBox">
+    <h2>Set your API key</h2>
+    <p>This app runs on your own Vercel AI Gateway key. Usage is billed to your own Vercel account (free while within the free credits).</p>
+    <ol>
+      <li>Create an account at <a href="https://vercel.com/signup" target="_blank" rel="noopener">vercel.com</a>.</li>
+      <li>Go to AI Gateway → API Keys → Create Key (the key is shown only once).</li>
+      <li>Free credits require adding a card. Adding a card alone does not charge you.</li>
+      <li>We recommend setting a spending limit under AI Gateway → Budgets (e.g. $5).</li>
+    </ol>
+    <input type="password" id="keyInput" placeholder="Paste your key (starts with vck_)" autocomplete="off">
+    <div class="line">
+      <button id="keySave">Save</button>
+      <button class="link" id="keyCancel" hidden>Close</button>
+      <span class="hint" id="keyMsg"></span>
+    </div>
+    <p class="hint">Your key is stored only on this device and is sent only to Vercel.</p>
+  </div>
+</section>
+
+<main id="scroller">
+  <div class="log" id="log"></div>
+</main>
+
+<footer>
+  <div class="composer">
+    <div>
+      <label class="small" for="state">Text or situation to judge (optional)</label>
+      <textarea id="state" rows="3"></textarea>
+    </div>
+    <div class="line">
+      <label class="filebtn">Load file<input type="file" id="file" accept=".txt,.md,.csv,.tsv,.json,.log,.xml,.html,.htm,.srt,.vtt,.py,.js,.css,.pdf,.docx,.png,.jpg,.jpeg,.bmp,.tif,.tiff,.webp,text/*,application/pdf,image/*" hidden></label>
+      <span class="fileinfo" id="fileInfo"></span>
+    </div>
+    <div>
+      <label class="small" for="question">Question for Jev (optional — one question per line to ask several at once)</label>
+      <textarea id="question" rows="2"></textarea>
+    </div>
+    <div class="line">
+      <div class="seg" role="group" aria-label="Answer type">
+        <button data-kind="boolean" aria-pressed="true">Yes / No</button>
+        <button data-kind="choice" aria-pressed="false">Multiple choice</button>
+        <button data-kind="score" aria-pressed="false">Rating scale</button>
+      </div>
+      <input type="text" id="options" hidden>
+      <button id="send">Send</button>
+    </div>
+  </div>
+</footer>
+
+<script>
+
+// ---- Networking: the desktop version talks to the local server; the Android app calls Vercel through the native bridge ----
+const IS_APP = !!window.JevBridge;
+const KEY_STORE = 'jev-api-key';
+function getKey(){ try { return localStorage.getItem(KEY_STORE) || ''; } catch { return ''; } }
+function setKey(v){ try { localStorage.setItem(KEY_STORE, v); } catch {} }
+const GATEWAY = 'https://ai-gateway.vercel.sh';
+const DEFAULT_QUESTION = { boolean: 'Is this statement correct?', choice: 'Which option fits best?', score: 'Which level applies?' };
+const bridgePending = {}; let bridgeSeq = 0;
+window.__jevDone = (id, status, text) => { const f = bridgePending[id]; delete bridgePending[id]; if (f) f({ status, text }); };
+function bridgeRequest(method, path, body){
+  return new Promise(resolve => {
+    const id = ++bridgeSeq; bridgePending[id] = resolve;
+    window.JevBridge.request(id, method, GATEWAY + path, body || '', getKey());
+  });
+}
+function appLedger(addCalls, addCost){
+  let l = { calls: 0, chargedUsd: 0 };
+  try {
+    l = { ...l, ...JSON.parse(localStorage.getItem('jev-ledger') || '{}') };
+    if (addCalls || addCost) { l.calls += addCalls; l.chargedUsd += addCost; localStorage.setItem('jev-ledger', JSON.stringify(l)); }
+  } catch {}
+  return l;
+}
+async function appCredits(){
+  const r = await bridgeRequest('GET', '/v1/credits');
+  if (r.status !== 200) return null;
+  const j = JSON.parse(r.text); return { balance: Number(j.balance), used: Number(j.total_used) };
+}
+// Read text from an image (desktop: Windows OCR / app: Android on-device OCR)
+async function ocrBlob(blob, ext){
+  if (IS_APP) {
+    const b64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(blob);
+    });
+    const r = await new Promise(resolve => {
+      const id = ++bridgeSeq; bridgePending[id] = resolve; window.JevBridge.ocr(id, b64);
+    });
+    if (r.status !== 200) throw new Error(r.text || 'Could not read text from the image.');
+    return r.text;
+  }
+  const r = await fetch('/api/ocr', { method: 'POST', headers: { 'x-file-ext': ext || 'png' }, body: blob });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error);
+  return j.text;
+}
+
+// OCR output for CJK text sometimes has a space between every character; remove those
+function tidyOcr(text){
+  return text
+    .replace(/([^\x00-\x7F])[ \t]+(?=[^\x00-\x7F])/g, '$1')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function buildQuestion(question, kind, options){
+  const opts = String(options || '').split(/[,、，\n]/).map(s => s.trim()).filter(Boolean);
+  if (kind === 'choice') {
+    if (opts.length < 2) throw new Error('Enter at least two options, separated by commas.');
+    return { type: 'choice', instructions: question, criteria: Object.fromEntries(opts.map(o => [o, null])) };
+  }
+  if (kind === 'score') return { type: 'score', instructions: question, criteria: opts.length >= 2 ? opts : ['Low', 'Medium', 'High'] };
+  return { type: 'boolean', instructions: question };
+}
+const api = {
+  async usage(){
+    if (!IS_APP) return (await fetch('/api/usage', { headers: { 'x-api-key': getKey() } })).json();
+    return { ...appLedger(0, 0), credits: await appCredits() };
+  },
+  // Returns { ok, data } where data is { answers, tokens, usage } or { error }
+  async evaluate({ state, questions }){
+    if (!IS_APP) {
+      const r = await fetch('/api/evaluate', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': getKey() },
+        body: JSON.stringify({ state, questions }) });
+      return { ok: r.ok, data: await r.json() };
+    }
+    try {
+      if (!getKey()) throw new Error('No API key set. Use "API key" at the top right to set one.');
+      const asked = questions.map(q => ({ ...q, question: q.question || DEFAULT_QUESTION[q.kind] || DEFAULT_QUESTION.boolean }));
+      if (!state) state = asked[0].question;
+      const credits = await appCredits();
+      if (credits && credits.balance < 0.001) throw new Error('Stopped: your free credits are used up (you will not be charged).');
+      const built = {};
+      asked.forEach((q, i) => { built['q' + i] = buildQuestion(q.question, q.kind, q.options); });
+      const r = await bridgeRequest('POST', '/v4/ai/evaluation-model', JSON.stringify({ state, questions: built, providerOptions: {} }));
+      if (r.status === 0) throw new Error('No internet connection.');
+      if (r.status === 402) throw new Error(/quota_for_entity_exceeded/.test(r.text)
+        ? 'Stopped: your Vercel budget limit was reached (you will not be charged).'
+        : 'Stopped: no free credits left (you will not be charged).');
+      if (r.status !== 200) { let m = r.text; try { m = JSON.parse(r.text).error.message; } catch {} throw new Error(`Error (${r.status}): ${m}`); }
+      const j = JSON.parse(r.text);
+      const answers = asked.map((q, i) => {
+        const a = j.answers['q' + i];
+        if (built['q' + i].type === 'score') a.levels = built['q' + i].criteria;
+        return { question: q.question, answer: a };
+      });
+      const gw = j.providerMetadata?.gateway ?? {};
+      const cost = Number(gw.cost ?? 0), marketCost = Number(gw.marketCost ?? 0);
+      return { ok: true, data: { answers, tokens: j.usage?.inputTokens ?? 0, cost, marketCost,
+        usage: { ...appLedger(1, cost), credits: await appCredits() } } };
+    } catch (e) {
+      return { ok: false, data: { error: e.message || String(e) } };
+    }
+  },
+};
+
+const $ = (id) => document.getElementById(id);
+
+// ---- Loaded file (only the beginning is used if it is extremely long) ----
+const FILE_LIMIT = 400000;   // room for a full novel or dissertation (~120k Japanese characters)
+const CHUNK_CHARS = 24000;   // Jev accepts about 32k tokens per call; split long text with some margin
+const CHUNK_OVERLAP = 400;   // overlap chunks slightly so context is not cut at the boundary
+let loadedFile = null; // { name, text, chars, truncated, note }
+
+// Decode as UTF-8 first; fall back to Shift_JIS for legacy Japanese Windows text files
+function decodeText(buf){
+  const utf8 = new TextDecoder('utf-8').decode(buf);
+  if (!utf8.includes('\uFFFD')) return utf8;
+  try {
+    const sjis = new TextDecoder('shift_jis').decode(buf);
+    if (!sjis.includes('\uFFFD')) return sjis;
+  } catch {}
+  return utf8;
+}
+
+function showFileInfo(){
+  const el = $('fileInfo');
+  el.innerHTML = '';
+  if (!loadedFile) return;
+  const name = document.createElement('b');
+  name.textContent = '📄 ' + loadedFile.name;
+  const size = document.createElement('span');
+  size.textContent = '(' + loadedFile.chars.toLocaleString() + ' chars' + (loadedFile.truncated ? ', beginning only' : '')
+    + (loadedFile.note ? ', ' + loadedFile.note : '') + ')';
+  const remove = document.createElement('button');
+  remove.textContent = '×';
+  remove.title = 'Remove';
+  remove.onclick = () => { loadedFile = null; $('file').value = ''; showFileInfo(); };
+  el.append(name, size, remove);
+}
+
+// Extract text from a PDF (pdf.js is bundled; no internet connection needed)
+let pdfjsLib = null;
+async function readPdf(buf, onProgress){
+  if (!pdfjsLib) {
+    pdfjsLib = await import('./vendor/pdf.min.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', location.href).href;
+  }
+  const base = new URL('./vendor/', location.href).href;
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf),
+    cMapUrl: base + 'cmaps/', cMapPacked: true, standardFontDataUrl: base + 'standard_fonts/' }).promise;
+  const pages = [];
+  let ocrPages = 0;
+  for (let i = 1; i <= doc.numPages; i++) {
+    if (onProgress) onProgress(`Reading PDF… page ${i}/${doc.numPages}`);
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    let line = '', out = [], lastY = null;
+    for (const it of content.items) {
+      if (typeof it.str !== 'string') continue;
+      const y = it.transform ? Math.round(it.transform[5]) : null;
+      if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) { out.push(line); line = ''; }
+      line += it.str;
+      if (it.hasEOL) { out.push(line); line = ''; }
+      lastY = y;
+    }
+    if (line) out.push(line);
+    const pageText = out.join('\n');
+    if (pageText.replace(/\s/g, '').length < 30) ocrPages++;  // page with (almost) no text layer
+    pages.push(pageText);
+  }
+  return { text: restoreCircled(pages.join('\n\n')), numPages: doc.numPages, ocrPages };
+}
+
+// OCR an entire PDF (desktop uses Windows, the app uses Android's PDF renderer)
+async function ocrPdfFile(file, onProgress){
+  if (IS_APP) {
+    const b64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+    const prep = await new Promise(resolve => {
+      const id = ++bridgeSeq; bridgePending[id] = resolve; window.JevBridge.pdfPrep(id, b64);
+    });
+    if (prep.status !== 200) throw new Error(prep.text);
+    const pages = Number(prep.text);
+    const out = [];
+    for (let i = 1; i <= pages; i++) {
+      if (onProgress) onProgress(`Reading as images… page ${i}/${pages}`);
+      const r = await new Promise(resolve => {
+        const id = ++bridgeSeq; bridgePending[id] = resolve; window.JevBridge.pdfPage(id, i);
+      });
+      if (r.status === 200) out.push(tidyOcr(r.text));
+    }
+    return { text: out.join('\n\n'), numPages: pages, ocrPages: out.filter(t => t.trim()).length };
+  }
+
+  if (onProgress) onProgress('Converting PDF pages to images…');
+  const prep = await fetch('/api/pdfprep', { method: 'POST', body: file });
+  const info = await prep.json();
+  if (!prep.ok) throw new Error(info.error);
+  const out = [];
+  for (let i = 1; i <= info.pages; i++) {
+    if (onProgress) onProgress(`Reading as images… page ${i}/${info.pages}`);
+    const r = await fetch(`/api/pdfpage?id=${encodeURIComponent(info.id)}&page=${i}`);
+    const j = await r.json();
+    if (r.ok) out.push(tidyOcr(j.text));
+  }
+  return { text: out.join('\n\n'), numPages: info.pages, ocrPages: out.filter(t => t.trim()).length };
+}
+
+// Some Japanese PDFs map circled numbers (①②③…) to ASCII (!"#$…) when text is extracted; restore them
+const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩';
+const CIRCLED_ASCII = '!"#$%&\'()';
+function restoreCircled(text){
+  const japanese = (text.match(/[\u3040-\u30ff\u4e00-\u9fff]/g) || []).length;
+  if (japanese < text.length * 0.3) return text;          // only for mostly-Japanese documents
+  const hits = [...CIRCLED_ASCII].filter(c => (text.split(c).length - 1) >= 2).length;
+  if (hits < 3) return text;                               // leave it alone unless the pattern is clear
+  return text.replace(/["!#$%&'()]/g, c => CIRCLED[CIRCLED_ASCII.indexOf(c)] || c);
+}
+
+// Extract text from Word (.docx) by unpacking the zip ourselves (no extra library)
+async function readDocx(buf){
+  const view = new DataView(buf);
+  const bytes = new Uint8Array(buf);
+  // find the end-of-central-directory record
+  let end = -1;
+  for (let i = bytes.length - 22; i >= 0 && i > bytes.length - 66000; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { end = i; break; }
+  }
+  if (end < 0) throw new Error('This does not look like a Word file.');
+  let offset = view.getUint32(end + 16, true);
+  const count = view.getUint16(end + 10, true);
+  let entry = null;
+  for (let i = 0; i < count; i++) {
+    const nameLen = view.getUint16(offset + 28, true);
+    const extraLen = view.getUint16(offset + 30, true);
+    const commentLen = view.getUint16(offset + 32, true);
+    const name = new TextDecoder().decode(bytes.subarray(offset + 46, offset + 46 + nameLen));
+    if (name === 'word/document.xml') {
+      entry = { method: view.getUint16(offset + 10, true), size: view.getUint32(offset + 20, true),
+                local: view.getUint32(offset + 42, true) };
+      break;
+    }
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+  if (!entry) throw new Error('Could not find the document body in the Word file.');
+  const nameLen = view.getUint16(entry.local + 26, true);
+  const extraLen = view.getUint16(entry.local + 28, true);
+  const start = entry.local + 30 + nameLen + extraLen;
+  const raw = bytes.subarray(start, start + entry.size);
+  let xml;
+  if (entry.method === 0) {
+    xml = new TextDecoder().decode(raw);
+  } else {
+    const ds = new DecompressionStream('deflate-raw');
+    const stream = new Blob([raw]).stream().pipeThrough(ds);
+    xml = new TextDecoder().decode(await new Response(stream).arrayBuffer());
+  }
+  // one line per paragraph, text only
+  return xml
+    .replace(/<w:tab[^>]*\/>/g, '\t')
+    .replace(/<w:br[^>]*\/>/g, '\n')
+    .replace(/<\/w:p>/g, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'bmp', 'tif', 'tiff', 'webp'];
+
+function setFileStatus(msg){
+  const el = $('fileInfo');
+  el.innerHTML = '';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  el.append(span);
+}
+
+$('file').onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const ext = (f.name.split('.').pop() || '').toLowerCase();
+  let note = '';
+  try {
+    setFileStatus('Reading…');
+    const buf = await f.arrayBuffer();
+    let text;
+    if (IMAGE_EXT.includes(ext)) {
+      setFileStatus('Reading text from the image…');
+      text = tidyOcr(await ocrBlob(f, ext));
+    }
+    else if (ext === 'pdf') {
+      let r = await readPdf(buf, setFileStatus);
+      // if most pages have no text layer (a scanned PDF), OCR the whole document
+      if (r.ocrPages > r.numPages / 2) {
+        r = await ocrPdfFile(f, setFileStatus);
+        note = `${r.numPages} pages, read as images`;
+      } else {
+        note = `${r.numPages} pages`;
+      }
+      text = r.text;
+    }
+    else if (ext === 'docx') text = await readDocx(buf);
+    else if (ext === 'doc') throw new Error('Old Word files (.doc) are not supported. Please save it as .docx.');
+    else text = decodeText(buf);
+    const truncated = text.length > FILE_LIMIT;
+    if (truncated) text = text.slice(0, FILE_LIMIT);
+    loadedFile = text.trim() ? { name: f.name, text, chars: text.length, truncated, note } : null;
+    if (!loadedFile) alert(ext === 'pdf'
+      ? 'No text could be extracted from this PDF. It may be a scanned (image-only) PDF.'
+      : 'No text could be read from this file.');
+  } catch (err) {
+    loadedFile = null;
+    alert('Could not load the file.' + (err && err.message ? '\n' + err.message : ''));
+  }
+  showFileInfo();
+};
+const log = $('log'), scroller = $('scroller');
+let kind = 'boolean';
+const KIND_LABEL = { boolean: 'Yes / No', choice: 'Choice', score: 'Scale' };
+const HISTORY_KEY = 'jev-chat-history';
+const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+
+function setKind(k){
+  kind = k;
+  document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.kind === k));
+  const o = $('options');
+  o.hidden = k === 'boolean';
+  o.placeholder = k === 'choice' ? 'Options, comma-separated' : 'Levels from low to high, comma-separated';
+}
+document.querySelectorAll('.seg button').forEach(b => b.onclick = () => setKind(b.dataset.kind));
+
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ESC_MAP[c]); }
+function pct(p){ return Math.round(p * 100) + '%'; }
+
+function rowsHtml(entries){
+  const max = Math.max(...entries.map(e => e[1]));
+  return '<div class="rows">' + entries.map(([name, p]) =>
+    `<div class="row ${p === max ? 'top' : ''}"><span>${esc(name)}</span><span class="track"><i style="width:${p * 100}%"></i></span><span class="pct">${pct(p)}</span></div>`
+  ).join('') + '</div>';
+}
+
+function answerHtml(a){
+  if (a.type === 'boolean') {
+    const yes = a.probability;
+    const note = a.parts > 1 ? `; part ${a.bestPart} of ${a.parts} matched best` : '';
+    const head = yes >= 0.5 ? `Yes <small>(probability ${pct(yes)}${note})</small>` : `No <small>(probability of yes ${pct(yes)}${note})</small>`;
+    return `<div class="headline">${head}</div>` + rowsHtml([['Yes', yes], ['No', 1 - yes]]);
+  }
+  if (a.type === 'choice') {
+    const entries = a.probabilities ? Object.entries(a.probabilities).sort((x, y) => y[1] - x[1]) : [];
+    return `<div class="headline">${esc(a.choice)}</div>` + (entries.length ? rowsHtml(entries) : '');
+  }
+  const levels = a.levels || [];
+  const probs = a.probabilities ? Object.entries(a.probabilities) : [];
+  const idx = probs.length ? Number(probs.slice().sort((x, y) => y[1] - x[1])[0][0]) : Math.round(a.score);
+  const entries = probs.map(([i, p]) => [levels[i] ?? i, p]);
+  return `<div class="headline">${esc(levels[idx] ?? '')} <small>(score ${a.score.toFixed(2)} of max ${levels.length - 1})</small></div>` + (entries.length ? rowsHtml(entries) : '');
+}
+
+function costText(c){ return c ? '$' + c.toFixed(6) : '$0 (free)'; }
+
+// Split long text into pieces Jev can accept
+function splitState(state){
+  if (state.length <= CHUNK_CHARS) return [state];
+  const parts = [];
+  for (let i = 0; i < state.length; i += CHUNK_CHARS - CHUNK_OVERLAP) {
+    parts.push(state.slice(i, i + CHUNK_CHARS));
+  }
+  return parts;
+}
+
+// Combine the answers from each piece
+// Yes/No: take the maximum, so a match anywhere in the document counts as "yes"
+// Choice / scale: take the average to reflect the document as a whole
+function mergeAnswers(answers){
+  const valid = answers.filter(Boolean);
+  if (!valid.length) return null;
+  const first = valid[0];
+  if (first.type === 'boolean') {
+    const probs = valid.map(a => a.probability);
+    return { type: 'boolean', probability: Math.max(...probs), parts: probs.length,
+             bestPart: probs.indexOf(Math.max(...probs)) + 1 };
+  }
+  if (first.type === 'choice') {
+    const names = Object.keys(first.probabilities || { [first.choice]: 1 });
+    const sum = {};
+    for (const n of names) sum[n] = valid.reduce((t, a) => t + ((a.probabilities || {})[n] ?? (a.choice === n ? 1 : 0)), 0) / valid.length;
+    const choice = names.reduce((b, n) => (sum[n] > sum[b] ? n : b), names[0]);
+    return { type: 'choice', choice, probabilities: sum, parts: valid.length };
+  }
+  const levels = first.levels || [];
+  const scores = valid.map(a => a.score);
+  const sum = {};
+  for (const a of valid) for (const [k, v] of Object.entries(a.probabilities || {})) sum[k] = (sum[k] || 0) + v / valid.length;
+  return { type: 'score', score: scores.reduce((t, v) => t + v, 0) / scores.length, probabilities: sum,
+           levels, parts: valid.length, maxScore: Math.max(...scores) };
+}
+
+function answerList(item){
+  const list = item.answers || (item.answer ? [{ question: item.question, answer: item.answer }] : []);
+  return list.map(x =>
+    (list.length > 1 ? `<div class="qlabel">${esc(x.question)}</div>` : '')
+    + (x.answer ? answerHtml(x.answer) : '<div class="error">No answer (the options were too close to call).</div>')
+  ).join('<hr class="adiv">');
+}
+
+function render(item){
+  const u = document.createElement('div');
+  u.className = 'msg user';
+  const chip = item.file ? `<div class="filechip">📄<b>${esc(item.file.name)}</b><span>${item.file.chars.toLocaleString()} chars${item.file.truncated ? ', beginning only' : ''}</span></div>` : '';
+  u.innerHTML = `${chip}${item.state ? `<div class="state">${esc(item.state)}</div>` : ''}<div class="q" style="${item.state ? '' : 'margin:0;padding:0;border:0'}">${esc(item.question || '(no question)')}<span class="kind">${KIND_LABEL[item.kind]}${item.options ? ': ' + esc(item.options) : ''}</span></div>`;
+  const j = document.createElement('div');
+  j.className = 'msg jev';
+  let body;
+  if (item.pending) body = `<div class="thinking">Thinking…${item.progress ? ` (${item.progress})` : ''}</div>`;
+  else if (item.error) body = `<div class="error">${esc(item.error)}</div>`;
+  else body = answerList(item) + `<div class="meta">${item.parts > 1 ? `Split into ${item.parts} parts · ` : ''}${item.tokens.toLocaleString()} tokens · cost ${costText(item.cost)}${item.marketCost ? ` (list price $${item.marketCost.toFixed(6)})` : ''}</div>`;
+  j.innerHTML = `<div class="avatar">J</div><div class="bubble">${body}</div>`;
+  return [u, j];
+}
+
+let history = [];
+try { history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]').filter(h => !h.pending); } catch {}
+function save(){ try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(-100))); } catch {} }
+
+function renderAll(){
+  log.innerHTML = '';
+  history.forEach(h => log.append(...render(h)));
+  scroller.scrollTop = scroller.scrollHeight;
+}
+
+function showUsage(u){
+  const c = u.credits;
+  if (c) {
+    const total = c.balance + c.used;
+    $('usageText').textContent = `Charged ${costText(u.chargedUsd || 0)} / free credits left $${c.balance.toFixed(4)} (${u.calls} calls)`;
+    $('usageBar').style.width = (total > 0 ? Math.min(100, c.used / total * 100) : 0) + '%';
+  } else {
+    $('usageText').textContent = `Charged ${costText(u.chargedUsd || 0)} (${u.calls} calls)`;
+  }
+}
+if (getKey()) api.usage().then(showUsage).catch(() => { $('usageText').textContent = IS_APP ? 'Could not get balance' : 'Cannot reach the local server'; });
+else $('usageText').textContent = 'No API key set';
+
+async function send(){
+  if ($('send').disabled) return;
+  const typed = $('state').value.trim();
+  const lines = $('question').value.split('\n').map(t => t.trim()).filter(Boolean);
+  const options = kind === 'boolean' ? '' : $('options').value.trim();
+  if (!typed && !lines.length && !loadedFile) { alert('Load a file, or enter some text or a question.'); return; }
+  const questions = (lines.length ? lines : ['']).map(q => ({ question: q, kind, options }));
+  const question = lines.join('\n');
+  const state = loadedFile ? ['[File: ' + loadedFile.name + ']', loadedFile.text, typed].filter(Boolean).join('\n') : typed;
+  const item = { state: typed, question, kind, options, pending: true,
+    file: loadedFile ? { name: loadedFile.name, chars: loadedFile.chars, truncated: loadedFile.truncated } : null };
+  history.push(item); renderAll();
+  $('send').disabled = true;
+  try {
+    const parts = splitState(state);
+    const perQuestion = questions.map(() => []);
+    let tokens = 0, cost = 0, marketCost = 0, usage = null, failed = null;
+    for (let i = 0; i < parts.length; i++) {
+      if (parts.length > 1) { item.progress = `${i + 1}/${parts.length}`; renderAll(); }
+      const { ok, data } = await api.evaluate({ state: parts[i], questions });
+      if (!ok) { failed = data.error; break; }
+      data.answers.forEach((a, qi) => perQuestion[qi].push(a.answer));
+      tokens += data.tokens || 0; cost += data.cost || 0; marketCost += data.marketCost || 0;
+      usage = data.usage;
+    }
+    delete item.pending; delete item.progress;
+    if (failed) item.error = failed;
+    else {
+      item.answers = questions.map((q, qi) => ({ question: q.question, answer: mergeAnswers(perQuestion[qi]) }));
+      item.tokens = tokens; item.cost = cost; item.marketCost = marketCost;
+      item.parts = parts.length;
+      if (usage) showUsage(usage);
+      $('question').value = '';
+    }
+  } catch (e) {
+    delete item.pending;
+    item.error = 'Cannot reach the local server. Make sure JevChat.bat is running.';
+  }
+  $('send').disabled = false;
+  save(); renderAll();
+  $('question').focus();
+}
+$('send').onclick = send;
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.ctrlKey) send(); });
+$('clear').onclick = () => { if (confirm('Clear the conversation? (Usage records are kept.)')) { history = []; save(); renderAll(); } };
+
+// API key setup screen
+function closeSetup(){ $('setup').hidden = true; $('scroller').hidden = false; document.querySelector('footer').hidden = false; }
+function showSetup(force){
+  const has = !!getKey();
+  $('setup').hidden = has && !force;
+  $('scroller').hidden = !$('setup').hidden;
+  document.querySelector('footer').hidden = !$('setup').hidden;
+  $('keyCancel').hidden = !has;
+  $('keyInput').value = '';
+  $('keyMsg').textContent = has ? 'A key is already set. Entering a new one will replace it.' : '';
+}
+$('keyBtn').onclick = () => showSetup(true);
+$('keyCancel').onclick = closeSetup;
+$('keySave').onclick = async () => {
+  const v = $('keyInput').value.trim();
+  if (!v) { $('keyMsg').textContent = 'Please paste your key.'; return; }
+  setKey(v);
+  $('keyMsg').textContent = 'Saved. Checking…';
+  try {
+    const u = await api.usage();
+    if (u.credits) {
+      $('keyMsg').textContent = `Key verified ($${u.credits.balance.toFixed(4)} left)`;
+      showUsage(u);
+      setTimeout(closeSetup, 800);
+    } else {
+      $('keyMsg').textContent = 'Could not check the balance with this key. Please make sure it is correct.';
+    }
+  } catch {
+    $('keyMsg').textContent = 'Could not verify. Check your connection and your key.';
+  }
+};
+
+setKind('boolean');
+renderAll();
+showSetup(false);
+if (!IS_APP) setInterval(() => fetch('/api/ping').catch(() => {}), 30 * 1000);
+</script>
+</body>
+</html>
