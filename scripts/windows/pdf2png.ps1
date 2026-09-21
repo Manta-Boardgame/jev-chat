@@ -3,7 +3,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$Path,
     [Parameter(Mandatory = $true)][string]$OutDir,
-    [int]$Width = 1700
+    [int]$Width = 1700,
+    [int]$MaxPages = 1000
 )
 
 $ErrorActionPreference = 'Stop'
@@ -36,6 +37,7 @@ New-Item -ItemType Directory -Force $OutDir | Out-Null
 $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync((Resolve-Path $Path).Path)) ([Windows.Storage.StorageFile])
 $pdf = Await ([Windows.Data.Pdf.PdfDocument]::LoadFromFileAsync($file)) ([Windows.Data.Pdf.PdfDocument])
 
+if ($pdf.PageCount -gt $MaxPages) { throw "PDFs with more than $MaxPages pages are not supported." }
 Write-Output $pdf.PageCount
 
 for ($i = 1; $i -le $pdf.PageCount; $i++) {

@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Security: only this app's own files may run or be contacted; nothing is loaded from other sites -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
 <title>Jev Chat</title>
 <link rel="icon" href="icon.png">
 <style>
@@ -274,6 +276,10 @@ const $ = (id) => document.getElementById(id);
 
 // ---- Loaded file (only the beginning is used if it is extremely long) ----
 const FILE_LIMIT = 400000;   // room for a full novel or dissertation (~120k Japanese characters)
+const MAX_FILE_BYTES = 100 * 1024 * 1024;  // refuse files larger than 100 MB
+const MAX_DOCX_XML_BYTES = 50 * 1024 * 1024; // stop "zip bombs" that expand to huge sizes
+const MAX_PDF_PAGES = 1000;
+const TEXT_EXT = ['txt', 'md', 'csv', 'tsv', 'json', 'log', 'xml', 'html', 'htm', 'srt', 'vtt', 'py', 'js', 'css'];
 const CHUNK_CHARS = 24000;   // Jev accepts about 32k tokens per call; split long text with some margin
 const CHUNK_OVERLAP = 400;   // overlap chunks slightly so context is not cut at the boundary
 let loadedFile = null; // { name, text, chars, truncated, note }
@@ -314,7 +320,10 @@ async function readPdf(buf, onProgress){
   }
   const base = new URL('./vendor/', location.href).href;
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf),
-    cMapUrl: base + 'cmaps/', cMapPacked: true, standardFontDataUrl: base + 'standard_fonts/' }).promise;
+    cMapUrl: base + 'cmaps/', cMapPacked: true, standardFontDataUrl: base + 'standard_fonts/',
+    isEvalSupported: false,   // never compile code from the PDF (defense in depth)
+    enableXfa: false }).promise;
+  if (doc.numPages > MAX_PDF_PAGES) throw new Error(`PDFs with more than ${MAX_PDF_PAGES} pages are not supported.`);
   const pages = [];
   let ocrPages = 0;
   for (let i = 1; i <= doc.numPages; i++) {
@@ -417,14 +426,23 @@ async function readDocx(buf){
   const nameLen = view.getUint16(entry.local + 26, true);
   const extraLen = view.getUint16(entry.local + 28, true);
   const start = entry.local + 30 + nameLen + extraLen;
+  if (entry.size > buf.byteLength || start + entry.size > buf.byteLength) throw new Error('The Word file is damaged.');
   const raw = bytes.subarray(start, start + entry.size);
   let xml;
   if (entry.method === 0) {
     xml = new TextDecoder().decode(raw);
   } else {
-    const ds = new DecompressionStream('deflate-raw');
-    const stream = new Blob([raw]).stream().pipeThrough(ds);
-    xml = new TextDecoder().decode(await new Response(stream).arrayBuffer());
+    // Expand in a stream and stop as soon as the size limit is exceeded (zip-bomb protection)
+    const reader = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+    const parts = []; let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > MAX_DOCX_XML_BYTES) { await reader.cancel(); throw new Error('The Word file expands to an unusually large size and was not loaded.'); }
+      parts.push(value);
+    }
+    xml = new TextDecoder().decode(await new Blob(parts).arrayBuffer());
   }
   // one line per paragraph, text only
   return xml
@@ -452,6 +470,10 @@ $('file').onchange = async (e) => {
   const ext = (f.name.split('.').pop() || '').toLowerCase();
   let note = '';
   try {
+    if (f.size > MAX_FILE_BYTES) throw new Error(`Files larger than ${MAX_FILE_BYTES / 1024 / 1024} MB are not supported.`);
+    if (![...TEXT_EXT, 'pdf', 'docx', 'doc', ...IMAGE_EXT].includes(ext)) {
+      throw new Error('This file type is not supported. Supported: ' + [...TEXT_EXT, 'pdf', 'docx', ...IMAGE_EXT].map(e => '.' + e).join(' '));
+    }
     setFileStatus('Reading…');
     const buf = await f.arrayBuffer();
     let text;

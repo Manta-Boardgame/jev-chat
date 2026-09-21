@@ -52,6 +52,54 @@ Each QuALITY question took about 6,300 input tokens and 0.6 seconds (median). Al
 These are public datasets, so we cannot rule out that Jev saw them during training; treat the numbers as indicative rather than definitive.
 Sample size is 100 per benchmark. Scripts, data sources and per-question results are in [`benchmarks/`](benchmarks/) so you can reproduce them.
 
+## Supported files
+
+| Type | Extensions | How the text is read |
+|---|---|---|
+| Plain text | `.txt` `.md` `.csv` `.tsv` `.json` `.log` `.xml` `.html` `.htm` `.srt` `.vtt` `.py` `.js` `.css` | Read directly (UTF-8, with Shift_JIS fallback for older Japanese files) |
+| PDF | `.pdf` | Text layer extracted with pdf.js; scanned (image-only) PDFs are OCR'd page by page |
+| Word | `.docx` | Paragraph text extracted from the document |
+| Images | `.png` `.jpg` `.jpeg` `.bmp` `.tif` `.tiff` `.webp` | On-device OCR |
+
+Limits: 100 MB per file, 1,000 PDF pages, 400,000 characters of text (longer text is cut).
+Not supported: old Word files (`.doc` — save them as `.docx`), Excel, PowerPoint, and any other type. Unsupported types are refused before they are read.
+
+## Security
+
+**Jev Chat never runs, opens or saves the files you load.** It only reads their text. That is the main safety guarantee, and it is backed by these safeguards:
+
+| Safeguard | Protects against |
+|---|---|
+| Only the file types above are accepted; everything else (for example `.exe`, `.dll`, `.bat`, `.docm`) is refused. Code files such as `.js` or `.py` are only read as text, never run | Executables and unknown formats |
+| 100 MB file limit, checked before reading | Oversized files that would freeze the app |
+| Word files are expanded as a stream and stopped at 50 MB | "Zip bombs" that expand to gigabytes |
+| Images larger than 400 megapixels are refused; large images are downscaled before OCR | "Decompression bombs" |
+| pdf.js runs with code evaluation disabled; PDF scripts, forms and launch actions are never executed | Malicious PDFs |
+| All file names and text are displayed as plain text | Script injection through file names or content |
+| Content Security Policy: the page may only load its own files and cannot contact other sites | Data exfiltration if anything slipped through |
+| Windows: the local server listens on `127.0.0.1` only and rejects requests from other websites (Host, Origin and Fetch-Metadata checks) | Other websites or DNS rebinding reaching the local server |
+| Android: links open in the system browser, never inside the app | Outside pages reaching the app's native functions |
+
+### Tested with simulated attacks
+
+We checked each safeguard with harmless test files that imitate real attacks (no real malware was used):
+
+| Test | Result |
+|---|---|
+| EICAR antivirus test string saved as `.txt` | Treated as 68 characters of plain text; nothing executed |
+| The same content renamed to `.exe` | Refused as an unsupported file type |
+| File name and content containing `<script>` and `<img onerror>` | Shown as text; no code ran |
+| Word "zip bomb" (0.3 MB file expanding to 300 MB) | Stopped with an error; the app kept working |
+| PDF containing JavaScript and a "launch `cmd.exe`" action | Text extracted normally; the script and launch action never ran |
+| PNG claiming 30,000 × 30,000 pixels (0.1 MB file) | Refused on Windows and Android; the app kept working |
+| 101 MB file | Refused before reading |
+| Requests to the local server from another website / with a spoofed Host | Rejected (HTTP 403) |
+| Upload over the server limit | Rejected (HTTP 413) |
+| Tapping an external link in the Android app | Opened in Chrome, not inside the app |
+
+**Jev Chat is not antivirus software.** It does not detect or remove viruses. A dangerous file stays dangerous on your disk even after Jev Chat reads it safely, so do not open files from untrusted sources in other programs.
+Also note that the text of the files you load is sent to Vercel AI Gateway (see [Privacy](#privacy)).
+
 ## Before you start: get your own API key
 
 The app uses **your own** Vercel AI Gateway API key. Usage is billed to your own Vercel account.

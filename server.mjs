@@ -11,6 +11,8 @@ import { createGateway } from '@ai-sdk/gateway';
 const PORT = 3939;
 const MODEL = 'typesafe-ai/jev';
 const MIN_BALANCE_USD = 0.001; // refuse to send once the free credits are used up
+const MAX_BODY_BYTES = 110 * 1024 * 1024; // uploads larger than this are rejected
+const ALLOWED_HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
 const LEDGER = new URL('./usage-ledger.json', import.meta.url);
 const PUBLIC_DIR = fileURLToPath(new URL('./public/', import.meta.url));
 const scriptPath = (name) => fileURLToPath(new URL(`./scripts/windows/${name}`, import.meta.url));
@@ -62,7 +64,12 @@ function runPowerShell(script, args, maxBuffer) {
     execFile('powershell.exe',
       ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath(script), ...args],
       { encoding: 'utf8', maxBuffer },
-      (err, stdout, stderr) => (err ? reject(new Error(stderr?.trim() || err.message)) : resolve(stdout)));
+      (err, stdout, stderr) => {
+        if (!err) return resolve(stdout);
+        // Show only the first line of the script's error; PowerShell appends file paths and positions after it
+        const first = String(stderr ?? '').split(/\r?\n/).map(l => l.trim()).find(Boolean) ?? '';
+        reject(new Error(/^[\x20-\x7E]+$/.test(first) ? first : 'The file could not be processed.'));
+      });
   });
 }
 
@@ -100,10 +107,29 @@ function send(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+class TooLarge extends Error {}
+
 async function readBody(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > MAX_BODY_BYTES) throw new TooLarge('File is too large.');
+    chunks.push(chunk);
+  }
   return Buffer.concat(chunks);
+}
+
+// Only accept requests from this app's own page.
+// - Host check blocks DNS-rebinding attacks from other websites.
+// - Origin check blocks other websites from sending requests to this local server.
+function isTrusted(req) {
+  if (!ALLOWED_HOSTS.has(String(req.headers.host ?? ''))) return false;
+  const origin = req.headers.origin;
+  if (origin && !ALLOWED_HOSTS.has(origin.replace(/^https?:\/\//, ''))) return false;
+  const site = req.headers['sec-fetch-site'];
+  if (site && site !== 'same-origin' && site !== 'none') return false;
+  return true;
 }
 
 const STATIC_TYPES = {
@@ -128,7 +154,21 @@ let lastSeen = Date.now();
 setInterval(() => { if (Date.now() - lastSeen > IDLE_EXIT_MS) process.exit(0); }, 30 * 1000);
 
 const server = http.createServer(async (req, res) => {
+  if (!isTrusted(req)) { res.writeHead(403); return res.end(); }
   lastSeen = Date.now();
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  try {
+    await handle(req, res);
+  } catch (e) {
+    if (res.headersSent) return res.end();
+    if (e instanceof TooLarge) return send(res, 413, { error: 'The file is too large (limit 100 MB).' });
+    return send(res, 500, { error: 'Unexpected error.' });
+  }
+});
+
+async function handle(req, res) {
   if (req.url === '/api/ping') { res.writeHead(204); return res.end(); }
 
   if (req.method === 'GET' && req.url === '/api/usage') {
@@ -250,7 +290,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && serveStatic(req, res)) return;
   res.writeHead(404); res.end();
-});
+}
 
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') {

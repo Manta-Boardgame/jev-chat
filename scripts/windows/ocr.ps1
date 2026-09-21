@@ -24,12 +24,26 @@ function Await($op, $resultType) {
 $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($Path)) ([Windows.Storage.StorageFile])
 $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
 $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
-$bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
-
 $lang = New-Object Windows.Globalization.Language 'ja'
 $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang)
 if ($null -eq $engine) { $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }
 if ($null -eq $engine) { throw 'No OCR language is installed on this PC.' }
+
+# Refuse absurd dimensions ("decompression bombs") and scale large images down to what the OCR engine accepts
+$w = $decoder.PixelWidth; $h = $decoder.PixelHeight
+if ($w -le 0 -or $h -le 0 -or ([double]$w * $h) -gt 400000000) { throw 'The image dimensions are invalid or too large.' }
+$max = [Windows.Media.Ocr.OcrEngine]::MaxImageDimension
+if ($w -gt $max -or $h -gt $max) {
+    $scale = [Math]::Min($max / $w, $max / $h)
+    $t = New-Object Windows.Graphics.Imaging.BitmapTransform
+    $t.ScaledWidth = [uint32][Math]::Floor($w * $scale)
+    $t.ScaledHeight = [uint32][Math]::Floor($h * $scale)
+    $bitmap = Await ($decoder.GetSoftwareBitmapAsync($decoder.BitmapPixelFormat, $decoder.BitmapAlphaMode, $t,
+        [Windows.Graphics.Imaging.ExifOrientationMode]::RespectExifOrientation,
+        [Windows.Graphics.Imaging.ColorManagementMode]::DoNotColorManage)) ([Windows.Graphics.Imaging.SoftwareBitmap])
+} else {
+    $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+}
 
 $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
 

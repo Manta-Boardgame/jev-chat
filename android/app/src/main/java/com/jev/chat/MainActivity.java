@@ -51,7 +51,11 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final String GATEWAY = "https://ai-gateway.vercel.sh/";
+    private static final String APP_HOST = "appassets.androidplatform.net";
     private static final int FILE_PICK = 1;
+    private static final int MAX_IMAGE_SIDE = 4096;          // larger images are downscaled before OCR
+    private static final long MAX_IMAGE_PIXELS = 400_000_000L; // refuse "decompression bomb" images
+    private static final int MAX_PDF_PAGES = 1000;
 
     private WebView webView;
     private ValueCallback<Uri[]> filePicked;
@@ -129,7 +133,22 @@ public class MainActivity extends Activity {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 return loader.shouldInterceptRequest(request.getUrl());
             }
+
+            // Security: never load outside pages inside the app, because the page has access to the
+            // native bridge. Links (e.g. vercel.com) open in the system browser instead.
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri url = request.getUrl();
+                if (APP_HOST.equals(url.getHost())) return false;
+                if ("https".equals(url.getScheme()) || "http".equals(url.getScheme())) {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, url)); } catch (Exception ignored) {}
+                }
+                return true;
+            }
         });
+        s.setAllowFileAccess(false);
+        s.setAllowContentAccess(false);
+        s.setSupportMultipleWindows(false);
 
         webView.addJavascriptInterface(new Bridge(), "JevBridge");
         webView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
@@ -203,6 +222,10 @@ public class MainActivity extends Activity {
                     try (FileOutputStream out = new FileOutputStream(f)) { out.write(data); }
                     pdfFd = ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY);
                     pdfRenderer = new PdfRenderer(pdfFd);
+                    if (pdfRenderer.getPageCount() > MAX_PDF_PAGES) {
+                        closePdf();
+                        throw new Exception("PDFs with more than " + MAX_PDF_PAGES + " pages are not supported.");
+                    }
                     deliver(id, 200, String.valueOf(pdfRenderer.getPageCount()));
                 } catch (Exception e) {
                     deliver(id, 500, "Could not open the PDF. " + e.getMessage());
@@ -220,7 +243,12 @@ public class MainActivity extends Activity {
                     synchronized (MainActivity.this) {
                         PdfRenderer.Page page = pdfRenderer.openPage(pageNumber - 1);
                         int width = Math.min(2200, page.getWidth() * 3);
-                        int height = (int) ((long) width * page.getHeight() / page.getWidth());
+                        long h = (long) width * page.getHeight() / Math.max(1, page.getWidth());
+                        if (h > MAX_IMAGE_SIDE * 2) {   // unusually tall page: shrink so the bitmap stays small
+                            width = (int) Math.max(1, (long) width * MAX_IMAGE_SIDE * 2 / h);
+                            h = MAX_IMAGE_SIDE * 2;
+                        }
+                        int height = (int) Math.max(1, h);
                         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
                         new Canvas(bitmap).drawColor(Color.WHITE);
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
@@ -241,14 +269,29 @@ public class MainActivity extends Activity {
             io.execute(() -> {
                 try {
                     byte[] data = Base64.decode(base64, Base64.DEFAULT);
-                    Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
-                    if (bitmap == null) throw new Exception("Could not decode the image.");
-                    deliver(id, 200, recognize(bitmap));
+                    deliver(id, 200, recognize(decodeSafely(data)));
                 } catch (Exception e) {
                     deliver(id, 500, "Could not read text from the image. " + e.getMessage());
                 }
             });
         }
+    }
+
+    /** Decode an image without ever allocating a huge bitmap: check the size first, then downscale */
+    private static Bitmap decodeSafely(byte[] data) throws Exception {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(data, 0, data.length, bounds);
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw new Exception("Could not decode the image.");
+        if ((long) bounds.outWidth * bounds.outHeight > MAX_IMAGE_PIXELS) {
+            throw new Exception("The image dimensions are too large.");
+        }
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inSampleSize = 1;
+        while (Math.max(bounds.outWidth, bounds.outHeight) / opts.inSampleSize > MAX_IMAGE_SIDE) opts.inSampleSize *= 2;
+        Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length, opts);
+        if (bitmap == null) throw new Exception("Could not decode the image.");
+        return bitmap;
     }
 
     /** On-device text recognition (the Japanese model also reads Latin script) */
