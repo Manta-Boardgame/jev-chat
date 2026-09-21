@@ -33,6 +33,25 @@ The app shows the actual cost reported by Vercel and your remaining free credits
 **📱 Same app, two platforms.**
 The Windows and Android apps share the same interface. The Android app talks to Vercel directly — no PC needed.
 
+## Benchmarks
+
+We ran two standard reading-comprehension benchmarks through the same request format the app uses
+(100 randomly sampled questions each, fixed seed, September 2026):
+
+| Benchmark | What it tests | Jev | Random guess |
+|---|---|---|---|
+| **BoolQ** | Yes/no questions about a Wikipedia passage | **94%** | 50% |
+| **QuALITY** | 4-option questions about a ~5,000-word article or story, written so that skimming is not enough | **93%** | 25% |
+| QuALITY — *hard* subset | Questions that most time-limited human readers got wrong | **90%** | 25% |
+
+**Confidence you can trust:** when Jev was at least 90% confident, it was right **156 out of 157** times.
+Treat high-confidence answers as reliable and double-check the rest.
+
+Each QuALITY question took about 6,300 input tokens and 0.6 seconds (median). All 200 questions together cost $0.028 at list price.
+
+These are public datasets, so we cannot rule out that Jev saw them during training; treat the numbers as indicative rather than definitive.
+Sample size is 100 per benchmark. Scripts, data sources and per-question results are in [`benchmarks/`](benchmarks/) so you can reproduce them.
+
 ## Before you start: get your own API key
 
 The app uses **your own** Vercel AI Gateway API key. Usage is billed to your own Vercel account.
